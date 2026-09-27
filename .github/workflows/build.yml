@@ -600,3 +600,8 @@ jobs:
                               ),
                               const SizedBox(height: 16),
                               const
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: colonel-pos-v4-apk
+          path: app/build/app/outputs/flutter-apk/app-release.apk
