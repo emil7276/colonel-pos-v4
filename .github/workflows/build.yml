@@ -1,0 +1,602 @@
+name: Colonel Fried Chicken POS V4
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.29.2'
+          channel: stable
+
+      - name: Create Flutter project
+        run: |
+          mkdir app
+          cd app
+          flutter create . --platforms android --project-name colonel_pos_v4
+
+      - name: Write pubspec
+        run: |
+          cat > app/pubspec.yaml <<'YAML'
+          name: colonel_pos_v4
+          description: Colonel Fried Chicken POS
+          publish_to: "none"
+          version: 4.0.0+1
+
+          environment:
+            sdk: ">=3.7.0 <4.0.0"
+
+          dependencies:
+            flutter:
+              sdk: flutter
+            shared_preferences: ^2.5.3
+            image_picker: ^1.1.2
+
+          dev_dependencies:
+            flutter_test:
+              sdk: flutter
+            flutter_lints: ^5.0.0
+
+          flutter:
+            uses-material-design: true
+          YAML
+
+      - name: Write main.dart
+        run: |
+          cat > app/lib/main.dart <<'DART'
+          import 'dart:convert';
+          import 'dart:io';
+
+          import 'package:flutter/material.dart';
+          import 'package:image_picker/image_picker.dart';
+          import 'package:shared_preferences/shared_preferences.dart';
+
+          const Color brandRed = Color(0xFFD71920);
+          const Color darkRed = Color(0xFFB51218);
+          const Color lightRed = Color(0xFFFFF1F2);
+
+          String rupiah(int value) {
+            final text = value.toString();
+            final chars = text.split('').reversed.toList();
+            final groups = <String>[];
+
+            for (int i = 0; i < chars.length; i += 3) {
+              final end = (i + 3 < chars.length) ? i + 3 : chars.length;
+              groups.add(chars.sublist(i, end).reversed.join());
+            }
+
+            return 'Rp ${groups.reversed.join('.')}';
+          }
+
+          String nowString() {
+            final now = DateTime.now();
+            String two(int n) => n.toString().padLeft(2, '0');
+            return '${now.year}-${two(now.month)}-${two(now.day)} '
+                '${two(now.hour)}:${two(now.minute)}';
+          }
+
+          class MenuItemModel {
+            String id;
+            String name;
+            String category;
+            int price;
+            bool active;
+
+            MenuItemModel({
+              required this.id,
+              required this.name,
+              required this.category,
+              required this.price,
+              this.active = true,
+            });
+
+            Map<String, dynamic> toJson() => {
+                  'id': id,
+                  'name': name,
+                  'category': category,
+                  'price': price,
+                  'active': active,
+                };
+
+            factory MenuItemModel.fromJson(Map<String, dynamic> json) {
+              return MenuItemModel(
+                id: json['id'] ?? '',
+                name: json['name'] ?? '',
+                category: json['category'] ?? 'Menu',
+                price: (json['price'] ?? 0) as int,
+                active: json['active'] ?? true,
+              );
+            }
+          }
+
+          class CartItem {
+            final MenuItemModel menu;
+            int qty;
+
+            CartItem({
+              required this.menu,
+              this.qty = 1,
+            });
+
+            int get subtotal => menu.price * qty;
+          }
+
+          class Sale {
+            String number;
+            String date;
+            List<Map<String, dynamic>> items;
+            int total;
+            int discount;
+            int paid;
+            int change;
+            String payment;
+            String cashier;
+            bool cancelled;
+
+            Sale({
+              required this.number,
+              required this.date,
+              required this.items,
+              required this.total,
+              required this.discount,
+              required this.paid,
+              required this.change,
+              required this.payment,
+              required this.cashier,
+              this.cancelled = false,
+            });
+
+            Map<String, dynamic> toJson() => {
+                  'number': number,
+                  'date': date,
+                  'items': items,
+                  'total': total,
+                  'discount': discount,
+                  'paid': paid,
+                  'change': change,
+                  'payment': payment,
+                  'cashier': cashier,
+                  'cancelled': cancelled,
+                };
+
+            factory Sale.fromJson(Map<String, dynamic> json) {
+              return Sale(
+                number: json['number'] ?? '',
+                date: json['date'] ?? '',
+                items: List<Map<String, dynamic>>.from(
+                  (json['items'] ?? []).map(
+                    (e) => Map<String, dynamic>.from(e),
+                  ),
+                ),
+                total: json['total'] ?? 0,
+                discount: json['discount'] ?? 0,
+                paid: json['paid'] ?? 0,
+                change: json['change'] ?? 0,
+                payment: json['payment'] ?? 'Tunai',
+                cashier: json['cashier'] ?? '',
+                cancelled: json['cancelled'] ?? false,
+              );
+            }
+          }
+
+          class UserAccount {
+            String username;
+            String password;
+            String role;
+            bool active;
+
+            UserAccount({
+              required this.username,
+              required this.password,
+              required this.role,
+              this.active = true,
+            });
+
+            Map<String, dynamic> toJson() => {
+                  'username': username,
+                  'password': password,
+                  'role': role,
+                  'active': active,
+                };
+
+            factory UserAccount.fromJson(Map<String, dynamic> json) {
+              return UserAccount(
+                username: json['username'] ?? '',
+                password: json['password'] ?? '',
+                role: json['role'] ?? 'Kasir',
+                active: json['active'] ?? true,
+              );
+            }
+          }
+
+          class AppData {
+            static const defaultMenus = [
+              ['dada', 'Dada', 'Ayam', 12000],
+              ['pahaatas', 'Paha Atas', 'Ayam', 12000],
+              ['pahabawah', 'Paha Bawah', 'Ayam', 9000],
+              ['sayap', 'Sayap', 'Ayam', 9000],
+              ['paketdada', 'Paket Dada', 'Paket', 15500],
+              ['paketpahaatas', 'Paket Paha Atas', 'Paket', 15500],
+              ['paketpahabawah', 'Paket Paha Bawah', 'Paket', 12500],
+              ['paketsayap', 'Paket Sayap', 'Paket', 12500],
+              ['sambal', 'Sambal Geprek', 'Tambahan', 3000],
+              ['kentang', 'Kentang Goreng', 'Tambahan', 8000],
+              ['air', 'Air Mineral', 'Minuman', 4000],
+              ['esteh', 'Es Teh', 'Minuman', 4000],
+            ];
+
+            static Future<List<MenuItemModel>> menus() async {
+              final p = await SharedPreferences.getInstance();
+              final raw = p.getString('menus');
+
+              if (raw == null) {
+                return defaultMenus
+                    .map(
+                      (e) => MenuItemModel(
+                        id: e[0] as String,
+                        name: e[1] as String,
+                        category: e[2] as String,
+                        price: e[3] as int,
+                      ),
+                    )
+                    .toList();
+              }
+
+              return (jsonDecode(raw) as List)
+                  .map(
+                    (e) => MenuItemModel.fromJson(
+                      Map<String, dynamic>.from(e),
+                    ),
+                  )
+                  .toList();
+            }
+
+            static Future<void> saveMenus(
+              List<MenuItemModel> value,
+            ) async {
+              final p = await SharedPreferences.getInstance();
+              await p.setString(
+                'menus',
+                jsonEncode(
+                  value.map((e) => e.toJson()).toList(),
+                ),
+              );
+            }
+
+            static Future<List<Sale>> sales() async {
+              final p = await SharedPreferences.getInstance();
+              final raw = p.getString('sales');
+
+              if (raw == null) return [];
+
+              return (jsonDecode(raw) as List)
+                  .map(
+                    (e) => Sale.fromJson(
+                      Map<String, dynamic>.from(e),
+                    ),
+                  )
+                  .toList();
+            }
+
+            static Future<void> saveSales(List<Sale> value) async {
+              final p = await SharedPreferences.getInstance();
+              await p.setString(
+                'sales',
+                jsonEncode(
+                  value.map((e) => e.toJson()).toList(),
+                ),
+              );
+            }
+
+            static Future<List<UserAccount>> users() async {
+              final p = await SharedPreferences.getInstance();
+              final raw = p.getString('users');
+
+              if (raw == null) {
+                return [
+                  UserAccount(
+                    username: 'admin',
+                    password: '1234',
+                    role: 'Admin',
+                  ),
+                  UserAccount(
+                    username: 'kasir',
+                    password: '1234',
+                    role: 'Kasir',
+                  ),
+                ];
+              }
+
+              return (jsonDecode(raw) as List)
+                  .map(
+                    (e) => UserAccount.fromJson(
+                      Map<String, dynamic>.from(e),
+                    ),
+                  )
+                  .toList();
+            }
+
+            static Future<void> saveUsers(
+              List<UserAccount> value,
+            ) async {
+              final p = await SharedPreferences.getInstance();
+              await p.setString(
+                'users',
+                jsonEncode(
+                  value.map((e) => e.toJson()).toList(),
+                ),
+              );
+            }
+
+            static Future<String> storeName() async {
+              final p = await SharedPreferences.getInstance();
+              return p.getString('storeName') ??
+                  'Colonel Fried Chicken';
+            }
+
+            static Future<void> saveStoreName(String value) async {
+              final p = await SharedPreferences.getInstance();
+              await p.setString('storeName', value);
+            }
+
+            static Future<String> storeAddress() async {
+              final p = await SharedPreferences.getInstance();
+              return p.getString('storeAddress') ?? '';
+            }
+
+            static Future<void> saveStoreAddress(String value) async {
+              final p = await SharedPreferences.getInstance();
+              await p.setString('storeAddress', value);
+            }
+
+            static Future<String> storePhone() async {
+              final p = await SharedPreferences.getInstance();
+              return p.getString('storePhone') ?? '';
+            }
+
+            static Future<void> saveStorePhone(String value) async {
+              final p = await SharedPreferences.getInstance();
+              await p.setString('storePhone', value);
+            }
+
+            static Future<String> qrisPath() async {
+              final p = await SharedPreferences.getInstance();
+              return p.getString('qrisPath') ?? '';
+            }
+
+            static Future<void> saveQrisPath(String value) async {
+              final p = await SharedPreferences.getInstance();
+              await p.setString('qrisPath', value);
+            }
+
+            static Future<int> nextNumber() async {
+              final p = await SharedPreferences.getInstance();
+              final current = p.getInt('transactionNumber') ?? 0;
+              final next = current + 1;
+              await p.setInt('transactionNumber', next);
+              return next;
+            }
+          }
+
+          void main() {
+            WidgetsFlutterBinding.ensureInitialized();
+            runApp(const ColonelApp());
+          }
+
+          class ColonelApp extends StatelessWidget {
+            const ColonelApp({super.key});
+
+            @override
+            Widget build(BuildContext context) {
+              return MaterialApp(
+                debugShowCheckedModeBanner: false,
+                title: 'Colonel Fried Chicken POS',
+                theme: ThemeData(
+                  useMaterial3: true,
+                  colorScheme: ColorScheme.fromSeed(
+                    seedColor: brandRed,
+                    primary: brandRed,
+                  ),
+                  scaffoldBackgroundColor: Colors.white,
+                  appBarTheme: const AppBarTheme(
+                    backgroundColor: brandRed,
+                    foregroundColor: Colors.white,
+                    centerTitle: false,
+                  ),
+                  elevatedButtonTheme: ElevatedButtonThemeData(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: brandRed,
+                      foregroundColor: Colors.white,
+                      minimumSize: const Size(0, 48),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                  ),
+                  inputDecorationTheme: InputDecorationTheme(
+                    filled: true,
+                    fillColor: Colors.grey.shade50,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                ),
+                home: const LoginPage(),
+              );
+            }
+          }
+
+          class LoginPage extends StatefulWidget {
+            const LoginPage({super.key});
+
+            @override
+            State<LoginPage> createState() => _LoginPageState();
+          }
+
+          class _LoginPageState extends State<LoginPage> {
+            final user = TextEditingController();
+            final pass = TextEditingController();
+            bool loading = false;
+            bool obscure = true;
+
+            Future<void> login() async {
+              setState(() => loading = true);
+
+              final users = await AppData.users();
+
+              UserAccount? found;
+
+              for (final account in users) {
+                if (account.username == user.text.trim() &&
+                    account.password == pass.text &&
+                    account.active) {
+                  found = account;
+                  break;
+                }
+              }
+
+              setState(() => loading = false);
+
+              if (!mounted) return;
+
+              if (found == null) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text(
+                      'Username atau password salah',
+                    ),
+                  ),
+                );
+                return;
+              }
+
+              Navigator.pushReplacement(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => HomePage(
+                    account: found!,
+                  ),
+                ),
+              );
+            }
+
+            @override
+            Widget build(BuildContext context) {
+              return Scaffold(
+                body: Container(
+                  decoration: const BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [
+                        brandRed,
+                        darkRed,
+                      ],
+                    ),
+                  ),
+                  child: Center(
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.all(24),
+                      child: Card(
+                        elevation: 12,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(24),
+                        ),
+                        child: Padding(
+                          padding: const EdgeInsets.all(26),
+                          child: Column(
+                            children: [
+                              Container(
+                                width: 95,
+                                height: 95,
+                                decoration: const BoxDecoration(
+                                  color: brandRed,
+                                  shape: BoxShape.circle,
+                                ),
+                                child: const Center(
+                                  child: Text(
+                                    '🍗',
+                                    style: TextStyle(
+                                      fontSize: 50,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(height: 18),
+                              const Text(
+                                'COLONEL',
+                                style: TextStyle(
+                                  fontSize: 30,
+                                  fontWeight: FontWeight.w900,
+                                  color: brandRed,
+                                ),
+                              ),
+                              const Text(
+                                'FRIED CHICKEN',
+                                style: TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.bold,
+                                  letterSpacing: 2,
+                                ),
+                              ),
+                              const SizedBox(height: 5),
+                              const Text(
+                                'POINT OF SALE',
+                                style: TextStyle(
+                                  color: Colors.grey,
+                                  letterSpacing: 1.5,
+                                ),
+                              ),
+                              const SizedBox(height: 28),
+                              TextField(
+                                controller: user,
+                                decoration: const InputDecoration(
+                                  labelText: 'Username',
+                                  prefixIcon: Icon(
+                                    Icons.person_outline,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(height: 14),
+                              TextField(
+                                controller: pass,
+                                obscureText: obscure,
+                                decoration: InputDecoration(
+                                  labelText: 'Password',
+                                  prefixIcon: const Icon(
+                                    Icons.lock_outline,
+                                  ),
+                                  suffixIcon: IconButton(
+                                    onPressed: () {
+                                      setState(
+                                        () => obscure = !obscure,
+                                      );
+                                    },
+                                    icon: Icon(
+                                      obscure
+                                          ? Icons.visibility
+                                          : Icons.visibility_off,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(height: 20),
+                              SizedBox(
+                                width: double.infinity,
+                                child: ElevatedButton(
+                                  onPressed: loading ? null : login,
+                                  child: Text(
+                                    loading ? 'MEMPROSES...' : 'MASUK',
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(height: 16),
+                              const
