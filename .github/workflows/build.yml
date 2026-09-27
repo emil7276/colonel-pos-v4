@@ -19,11 +19,9 @@ jobs:
 
       - name: Create Flutter project
         run: |
-          mkdir app
-          cd app
-          flutter create . --platforms android --project-name colonel_pos_v4
+          flutter create --platforms android --project-name colonel_pos_v4 app
 
-      - name: Write pubspec
+      - name: Write pubspec.yaml
         run: |
           cat > app/pubspec.yaml <<'YAML'
           name: colonel_pos_v4
@@ -53,341 +51,117 @@ jobs:
         run: |
           cat > app/lib/main.dart <<'DART'
           import 'dart:convert';
-          import 'dart:io';
-
           import 'package:flutter/material.dart';
-          import 'package:image_picker/image_picker.dart';
           import 'package:shared_preferences/shared_preferences.dart';
 
-          const Color brandRed = Color(0xFFD71920);
-          const Color darkRed = Color(0xFFB51218);
-          const Color lightRed = Color(0xFFFFF1F2);
+          const red = Color(0xFFD71920);
+          const darkRed = Color(0xFF9E1117);
 
-          String rupiah(int value) {
-            final text = value.toString();
-            final chars = text.split('').reversed.toList();
-            final groups = <String>[];
-
-            for (int i = 0; i < chars.length; i += 3) {
-              final end = (i + 3 < chars.length) ? i + 3 : chars.length;
-              groups.add(chars.sublist(i, end).reversed.join());
+          String rp(int n) {
+            final s = n.toString();
+            final out = StringBuffer();
+            for (int i = 0; i < s.length; i++) {
+              if (i > 0 && (s.length - i) % 3 == 0) out.write('.');
+              out.write(s[i]);
             }
-
-            return 'Rp ${groups.reversed.join('.')}';
+            return 'Rp$out';
           }
 
-          String nowString() {
-            final now = DateTime.now();
-            String two(int n) => n.toString().padLeft(2, '0');
-            return '${now.year}-${two(now.month)}-${two(now.day)} '
-                '${two(now.hour)}:${two(now.minute)}';
-          }
-
-          class MenuItemModel {
-            String id;
+          class Product {
             String name;
             String category;
             int price;
             bool active;
-
-            MenuItemModel({
-              required this.id,
-              required this.name,
-              required this.category,
-              required this.price,
-              this.active = true,
-            });
+            Product(this.name, this.category, this.price, {this.active = true});
 
             Map<String, dynamic> toJson() => {
-                  'id': id,
-                  'name': name,
-                  'category': category,
-                  'price': price,
-                  'active': active,
-                };
+              'name': name,
+              'category': category,
+              'price': price,
+              'active': active
+            };
 
-            factory MenuItemModel.fromJson(Map<String, dynamic> json) {
-              return MenuItemModel(
-                id: json['id'] ?? '',
-                name: json['name'] ?? '',
-                category: json['category'] ?? 'Menu',
-                price: (json['price'] ?? 0) as int,
-                active: json['active'] ?? true,
-              );
-            }
-          }
-
-          class CartItem {
-            final MenuItemModel menu;
-            int qty;
-
-            CartItem({
-              required this.menu,
-              this.qty = 1,
-            });
-
-            int get subtotal => menu.price * qty;
+            factory Product.fromJson(Map<String, dynamic> j) => Product(
+              j['name'],
+              j['category'],
+              j['price'],
+              active: j['active'] ?? true,
+            );
           }
 
           class Sale {
-            String number;
-            String date;
-            List<Map<String, dynamic>> items;
-            int total;
-            int discount;
-            int paid;
-            int change;
-            String payment;
-            String cashier;
-            bool cancelled;
-
-            Sale({
-              required this.number,
-              required this.date,
-              required this.items,
-              required this.total,
-              required this.discount,
-              required this.paid,
-              required this.change,
-              required this.payment,
-              required this.cashier,
-              this.cancelled = false,
-            });
+            final String no;
+            final String time;
+            final int total;
+            final String payment;
+            Sale(this.no, this.time, this.total, this.payment);
 
             Map<String, dynamic> toJson() => {
-                  'number': number,
-                  'date': date,
-                  'items': items,
-                  'total': total,
-                  'discount': discount,
-                  'paid': paid,
-                  'change': change,
-                  'payment': payment,
-                  'cashier': cashier,
-                  'cancelled': cancelled,
-                };
+              'no': no,
+              'time': time,
+              'total': total,
+              'payment': payment
+            };
 
-            factory Sale.fromJson(Map<String, dynamic> json) {
-              return Sale(
-                number: json['number'] ?? '',
-                date: json['date'] ?? '',
-                items: List<Map<String, dynamic>>.from(
-                  (json['items'] ?? []).map(
-                    (e) => Map<String, dynamic>.from(e),
-                  ),
-                ),
-                total: json['total'] ?? 0,
-                discount: json['discount'] ?? 0,
-                paid: json['paid'] ?? 0,
-                change: json['change'] ?? 0,
-                payment: json['payment'] ?? 'Tunai',
-                cashier: json['cashier'] ?? '',
-                cancelled: json['cancelled'] ?? false,
-              );
-            }
+            factory Sale.fromJson(Map<String, dynamic> j) =>
+                Sale(j['no'], j['time'], j['total'], j['payment']);
           }
 
-          class UserAccount {
-            String username;
-            String password;
-            String role;
-            bool active;
+          final defaults = <Product>[
+            Product('Dada', 'Ayam', 12000),
+            Product('Paha Atas', 'Ayam', 12000),
+            Product('Paha Bawah', 'Ayam', 9000),
+            Product('Sayap', 'Ayam', 9000),
+            Product('Paket Dada', 'Paket', 15500),
+            Product('Paket Paha Atas', 'Paket', 15500),
+            Product('Paket Paha Bawah', 'Paket', 12500),
+            Product('Paket Sayap', 'Paket', 12500),
+            Product('Sambal Geprek', 'Tambahan', 3000),
+            Product('Kentang Goreng', 'Tambahan', 8000),
+            Product('Air Mineral', 'Minuman', 4000),
+            Product('Es Teh', 'Minuman', 4000),
+          ];
 
-            UserAccount({
-              required this.username,
-              required this.password,
-              required this.role,
-              this.active = true,
-            });
-
-            Map<String, dynamic> toJson() => {
-                  'username': username,
-                  'password': password,
-                  'role': role,
-                  'active': active,
-                };
-
-            factory UserAccount.fromJson(Map<String, dynamic> json) {
-              return UserAccount(
-                username: json['username'] ?? '',
-                password: json['password'] ?? '',
-                role: json['role'] ?? 'Kasir',
-                active: json['active'] ?? true,
-              );
-            }
+          Future<void> saveProducts(List<Product> p) async {
+            final sp = await SharedPreferences.getInstance();
+            await sp.setString(
+              'products',
+              jsonEncode(p.map((e) => e.toJson()).toList()),
+            );
           }
 
-          class AppData {
-            static const defaultMenus = [
-              ['dada', 'Dada', 'Ayam', 12000],
-              ['pahaatas', 'Paha Atas', 'Ayam', 12000],
-              ['pahabawah', 'Paha Bawah', 'Ayam', 9000],
-              ['sayap', 'Sayap', 'Ayam', 9000],
-              ['paketdada', 'Paket Dada', 'Paket', 15500],
-              ['paketpahaatas', 'Paket Paha Atas', 'Paket', 15500],
-              ['paketpahabawah', 'Paket Paha Bawah', 'Paket', 12500],
-              ['paketsayap', 'Paket Sayap', 'Paket', 12500],
-              ['sambal', 'Sambal Geprek', 'Tambahan', 3000],
-              ['kentang', 'Kentang Goreng', 'Tambahan', 8000],
-              ['air', 'Air Mineral', 'Minuman', 4000],
-              ['esteh', 'Es Teh', 'Minuman', 4000],
-            ];
-
-            static Future<List<MenuItemModel>> menus() async {
-              final p = await SharedPreferences.getInstance();
-              final raw = p.getString('menus');
-
-              if (raw == null) {
-                return defaultMenus
-                    .map(
-                      (e) => MenuItemModel(
-                        id: e[0] as String,
-                        name: e[1] as String,
-                        category: e[2] as String,
-                        price: e[3] as int,
-                      ),
-                    )
-                    .toList();
-              }
-
-              return (jsonDecode(raw) as List)
-                  .map(
-                    (e) => MenuItemModel.fromJson(
-                      Map<String, dynamic>.from(e),
-                    ),
-                  )
-                  .toList();
+          Future<List<Product>> loadProducts() async {
+            final sp = await SharedPreferences.getInstance();
+            final raw = sp.getString('products');
+            if (raw == null) {
+              await saveProducts(defaults);
+              return defaults.map((e) => Product(e.name, e.category, e.price)).toList();
             }
+            return (jsonDecode(raw) as List)
+                .map((e) => Product.fromJson(e))
+                .toList();
+          }
 
-            static Future<void> saveMenus(
-              List<MenuItemModel> value,
-            ) async {
-              final p = await SharedPreferences.getInstance();
-              await p.setString(
-                'menus',
-                jsonEncode(
-                  value.map((e) => e.toJson()).toList(),
-                ),
-              );
-            }
+          Future<List<Sale>> loadSales() async {
+            final sp = await SharedPreferences.getInstance();
+            final raw = sp.getString('sales');
+            if (raw == null) return [];
+            return (jsonDecode(raw) as List)
+                .map((e) => Sale.fromJson(e))
+                .toList();
+          }
 
-            static Future<List<Sale>> sales() async {
-              final p = await SharedPreferences.getInstance();
-              final raw = p.getString('sales');
-
-              if (raw == null) return [];
-
-              return (jsonDecode(raw) as List)
-                  .map(
-                    (e) => Sale.fromJson(
-                      Map<String, dynamic>.from(e),
-                    ),
-                  )
-                  .toList();
-            }
-
-            static Future<void> saveSales(List<Sale> value) async {
-              final p = await SharedPreferences.getInstance();
-              await p.setString(
-                'sales',
-                jsonEncode(
-                  value.map((e) => e.toJson()).toList(),
-                ),
-              );
-            }
-
-            static Future<List<UserAccount>> users() async {
-              final p = await SharedPreferences.getInstance();
-              final raw = p.getString('users');
-
-              if (raw == null) {
-                return [
-                  UserAccount(
-                    username: 'admin',
-                    password: '1234',
-                    role: 'Admin',
-                  ),
-                  UserAccount(
-                    username: 'kasir',
-                    password: '1234',
-                    role: 'Kasir',
-                  ),
-                ];
-              }
-
-              return (jsonDecode(raw) as List)
-                  .map(
-                    (e) => UserAccount.fromJson(
-                      Map<String, dynamic>.from(e),
-                    ),
-                  )
-                  .toList();
-            }
-
-            static Future<void> saveUsers(
-              List<UserAccount> value,
-            ) async {
-              final p = await SharedPreferences.getInstance();
-              await p.setString(
-                'users',
-                jsonEncode(
-                  value.map((e) => e.toJson()).toList(),
-                ),
-              );
-            }
-
-            static Future<String> storeName() async {
-              final p = await SharedPreferences.getInstance();
-              return p.getString('storeName') ??
-                  'Colonel Fried Chicken';
-            }
-
-            static Future<void> saveStoreName(String value) async {
-              final p = await SharedPreferences.getInstance();
-              await p.setString('storeName', value);
-            }
-
-            static Future<String> storeAddress() async {
-              final p = await SharedPreferences.getInstance();
-              return p.getString('storeAddress') ?? '';
-            }
-
-            static Future<void> saveStoreAddress(String value) async {
-              final p = await SharedPreferences.getInstance();
-              await p.setString('storeAddress', value);
-            }
-
-            static Future<String> storePhone() async {
-              final p = await SharedPreferences.getInstance();
-              return p.getString('storePhone') ?? '';
-            }
-
-            static Future<void> saveStorePhone(String value) async {
-              final p = await SharedPreferences.getInstance();
-              await p.setString('storePhone', value);
-            }
-
-            static Future<String> qrisPath() async {
-              final p = await SharedPreferences.getInstance();
-              return p.getString('qrisPath') ?? '';
-            }
-
-            static Future<void> saveQrisPath(String value) async {
-              final p = await SharedPreferences.getInstance();
-              await p.setString('qrisPath', value);
-            }
-
-            static Future<int> nextNumber() async {
-              final p = await SharedPreferences.getInstance();
-              final current = p.getInt('transactionNumber') ?? 0;
-              final next = current + 1;
-              await p.setInt('transactionNumber', next);
-              return next;
-            }
+          Future<void> saveSale(Sale s) async {
+            final list = await loadSales();
+            list.insert(0, s);
+            final sp = await SharedPreferences.getInstance();
+            await sp.setString(
+              'sales',
+              jsonEncode(list.map((e) => e.toJson()).toList()),
+            );
           }
 
           void main() {
-            WidgetsFlutterBinding.ensureInitialized();
             runApp(const ColonelApp());
           }
 
@@ -400,34 +174,9 @@ jobs:
                 debugShowCheckedModeBanner: false,
                 title: 'Colonel Fried Chicken POS',
                 theme: ThemeData(
+                  colorScheme: ColorScheme.fromSeed(seedColor: red),
                   useMaterial3: true,
-                  colorScheme: ColorScheme.fromSeed(
-                    seedColor: brandRed,
-                    primary: brandRed,
-                  ),
-                  scaffoldBackgroundColor: Colors.white,
-                  appBarTheme: const AppBarTheme(
-                    backgroundColor: brandRed,
-                    foregroundColor: Colors.white,
-                    centerTitle: false,
-                  ),
-                  elevatedButtonTheme: ElevatedButtonThemeData(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: brandRed,
-                      foregroundColor: Colors.white,
-                      minimumSize: const Size(0, 48),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                  ),
-                  inputDecorationTheme: InputDecorationTheme(
-                    filled: true,
-                    fillColor: Colors.grey.shade50,
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                  ),
+                  scaffoldBackgroundColor: const Color(0xFFF7F7F7),
                 ),
                 home: const LoginPage(),
               );
@@ -436,7 +185,6 @@ jobs:
 
           class LoginPage extends StatefulWidget {
             const LoginPage({super.key});
-
             @override
             State<LoginPage> createState() => _LoginPageState();
           }
@@ -444,46 +192,612 @@ jobs:
           class _LoginPageState extends State<LoginPage> {
             final user = TextEditingController();
             final pass = TextEditingController();
-            bool loading = false;
-            bool obscure = true;
 
-            Future<void> login() async {
-              setState(() => loading = true);
-
-              final users = await AppData.users();
-
-              UserAccount? found;
-
-              for (final account in users) {
-                if (account.username == user.text.trim() &&
-                    account.password == pass.text &&
-                    account.active) {
-                  found = account;
-                  break;
-                }
-              }
-
-              setState(() => loading = false);
-
-              if (!mounted) return;
-
-              if (found == null) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text(
-                      'Username atau password salah',
-                    ),
+            void login() {
+              if ((user.text == 'admin' && pass.text == '1234') ||
+                  (user.text == 'kasir' && pass.text == '1234')) {
+                Navigator.pushReplacement(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => HomePage(role: user.text),
                   ),
                 );
-                return;
+              } else {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Username atau password salah')),
+                );
               }
+            }
 
-              Navigator.pushReplacement(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => HomePage(
-                    account: found!,
+            @override
+            Widget build(BuildContext context) {
+              return Scaffold(
+                body: Center(
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.all(24),
+                    child: Column(
+                      children: [
+                        const Icon(Icons.restaurant,
+                            size: 80, color: red),
+                        const SizedBox(height: 12),
+                        const Text(
+                          'COLONEL FRIED CHICKEN',
+                          style: TextStyle(
+                            fontSize: 23,
+                            fontWeight: FontWeight.bold,
+                            color: red,
+                          ),
+                        ),
+                        const Text('POINT OF SALE',
+                            style: TextStyle(fontWeight: FontWeight.w600)),
+                        const SizedBox(height: 35),
+                        TextField(
+                          controller: user,
+                          decoration: const InputDecoration(
+                            labelText: 'Username',
+                            prefixIcon: Icon(Icons.person),
+                            border: OutlineInputBorder(),
+                          ),
+                        ),
+                        const SizedBox(height: 15),
+                        TextField(
+                          controller: pass,
+                          obscureText: true,
+                          decoration: const InputDecoration(
+                            labelText: 'Password',
+                            prefixIcon: Icon(Icons.lock),
+                            border: OutlineInputBorder(),
+                          ),
+                        ),
+                        const SizedBox(height: 20),
+                        SizedBox(
+                          width: double.infinity,
+                          height: 52,
+                          child: ElevatedButton(
+                            onPressed: login,
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: red,
+                              foregroundColor: Colors.white,
+                            ),
+                            child: const Text('MASUK'),
+                          ),
+                        ),
+                        const SizedBox(height: 15),
+                        const Text('Admin: admin / 1234'),
+                        const Text('Kasir: kasir / 1234'),
+                      ],
+                    ),
                   ),
+                ),
+              );
+            }
+          }
+
+          class HomePage extends StatefulWidget {
+            final String role;
+            const HomePage({super.key, required this.role});
+            @override
+            State<HomePage> createState() => _HomePageState();
+          }
+
+          class _HomePageState extends State<HomePage> {
+            int index = 0;
+
+            @override
+            Widget build(BuildContext context) {
+              final pages = [
+                DashboardPage(),
+                PosPage(),
+                ReportPage(),
+                SettingsPage(role: widget.role),
+              ];
+
+              return Scaffold(
+                appBar: AppBar(
+                  backgroundColor: red,
+                  foregroundColor: Colors.white,
+                  title: const Text('Colonel Fried Chicken'),
+                ),
+                body: pages[index],
+                bottomNavigationBar: NavigationBar(
+                  selectedIndex: index,
+                  onDestinationSelected: (i) => setState(() => index = i),
+                  destinations: const [
+                    NavigationDestination(
+                        icon: Icon(Icons.dashboard), label: 'Dashboard'),
+                    NavigationDestination(
+                        icon: Icon(Icons.point_of_sale), label: 'Transaksi'),
+                    NavigationDestination(
+                        icon: Icon(Icons.receipt_long), label: 'Laporan'),
+                    NavigationDestination(
+                        icon: Icon(Icons.settings), label: 'Pengaturan'),
+                  ],
+                ),
+              );
+            }
+          }
+
+          class DashboardPage extends StatelessWidget {
+            DashboardPage({super.key});
+
+            @override
+            Widget build(BuildContext context) {
+              return FutureBuilder<List<Sale>>(
+                future: loadSales(),
+                builder: (context, snap) {
+                  final sales = snap.data ?? [];
+                  final today = DateTime.now();
+                  final todaySales = sales.where((s) {
+                    final d = DateTime.tryParse(s.time);
+                    return d != null &&
+                        d.year == today.year &&
+                        d.month == today.month &&
+                        d.day == today.day;
+                  }).toList();
+                  final omzet = todaySales.fold<int>(
+                      0, (sum, s) => sum + s.total);
+
+                  return ListView(
+                    padding: const EdgeInsets.all(16),
+                    children: [
+                      const Text('Dashboard',
+                          style: TextStyle(
+                              fontSize: 25, fontWeight: FontWeight.bold)),
+                      const SizedBox(height: 15),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: infoCard(
+                              'Omzet Hari Ini',
+                              rp(omzet),
+                              Icons.payments,
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: infoCard(
+                              'Transaksi',
+                              '${todaySales.length}',
+                              Icons.receipt,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 20),
+                      const Text('Transaksi Terbaru',
+                          style: TextStyle(
+                              fontSize: 18, fontWeight: FontWeight.bold)),
+                      const SizedBox(height: 8),
+                      ...sales.take(8).map(
+                        (s) => Card(
+                          child: ListTile(
+                            leading: const CircleAvatar(
+                              backgroundColor: red,
+                              child: Icon(Icons.receipt, color: Colors.white),
+                            ),
+                            title: Text(s.no),
+                            subtitle: Text('${s.time} • ${s.payment}'),
+                            trailing: Text(rp(s.total)),
+                          ),
+                        ),
+                      ),
+                    ],
+                  );
+                },
+              );
+            }
+
+            Widget infoCard(String title, String value, IconData icon) {
+              return Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(18),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Icon(icon, color: red),
+                      const SizedBox(height: 12),
+                      Text(title),
+                      const SizedBox(height: 5),
+                      Text(value,
+                          style: const TextStyle(
+                              fontSize: 19, fontWeight: FontWeight.bold)),
+                    ],
+                  ),
+                ),
+              );
+            }
+          }
+
+          class PosPage extends StatefulWidget {
+            const PosPage({super.key});
+            @override
+            State<PosPage> createState() => _PosPageState();
+          }
+
+          class _PosPageState extends State<PosPage> {
+            List<Product> products = [];
+            final Map<String, int> cart = {};
+            String category = 'Semua';
+
+            @override
+            void initState() {
+              super.initState();
+              loadProducts().then((v) => setState(() => products = v));
+            }
+
+            int get total => cart.entries.fold(0, (sum, e) {
+              final p = products.firstWhere((p) => p.name == e.key);
+              return sum + p.price * e.value;
+            });
+
+            void add(Product p) {
+              setState(() => cart[p.name] = (cart[p.name] ?? 0) + 1);
+            }
+
+            Future<void> checkout() async {
+              if (cart.isEmpty) return;
+              String payment = 'Tunai';
+              final cash = TextEditingController();
+
+              final result = await showDialog<String>(
+                context: context,
+                builder: (c) => AlertDialog(
+                  title: const Text('Pembayaran'),
+                  content: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text('Total: ${rp(total)}',
+                          style: const TextStyle(
+                              fontWeight: FontWeight.bold, fontSize: 18)),
+                      const SizedBox(height: 15),
+                      DropdownButtonFormField<String>(
+                        value: payment,
+                        items: const [
+                          DropdownMenuItem(
+                              value: 'Tunai', child: Text('Tunai')),
+                          DropdownMenuItem(
+                              value: 'QRIS', child: Text('QRIS')),
+                        ],
+                        onChanged: (v) => payment = v!,
+                        decoration:
+                            const InputDecoration(labelText: 'Metode'),
+                      ),
+                      const SizedBox(height: 10),
+                      TextField(
+                        controller: cash,
+                        keyboardType: TextInputType.number,
+                        decoration: const InputDecoration(
+                          labelText: 'Uang Tunai',
+                        ),
+                      ),
+                    ],
+                  ),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(c),
+                      child: const Text('Batal'),
+                    ),
+                    ElevatedButton(
+                      onPressed: () => Navigator.pop(c, payment),
+                      child: const Text('Simpan'),
+                    ),
+                  ],
+                ),
+              );
+
+              if (result == null) return;
+
+              final sales = await loadSales();
+              final no = 'CFC-${(sales.length + 1).toString().padLeft(5, '0')}';
+              await saveSale(Sale(
+                no,
+                DateTime.now().toIso8601String(),
+                total,
+                result,
+              ));
+
+              setState(() => cart.clear());
+
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('$no berhasil disimpan')),
+                );
+              }
+            }
+
+            @override
+            Widget build(BuildContext context) {
+              final cats = [
+                'Semua',
+                ...products.map((p) => p.category).toSet()
+              ];
+              final shown = products.where((p) =>
+                  p.active && (category == 'Semua' || p.category == category));
+
+              return Column(
+                children: [
+                  SizedBox(
+                    height: 55,
+                    child: ListView(
+                      scrollDirection: Axis.horizontal,
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                      children: cats
+                          .map((c) => Padding(
+                                padding:
+                                    const EdgeInsets.symmetric(horizontal: 4),
+                                child: ChoiceChip(
+                                  label: Text(c),
+                                  selected: category == c,
+                                  onSelected: (_) =>
+                                      setState(() => category = c),
+                                ),
+                              ))
+                          .toList(),
+                    ),
+                  ),
+                  Expanded(
+                    child: ListView(
+                      padding: const EdgeInsets.all(12),
+                      children: shown
+                          .map((p) => Card(
+                                child: ListTile(
+                                  title: Text(p.name,
+                                      style: const TextStyle(
+                                          fontWeight: FontWeight.bold)),
+                                  subtitle: Text(rp(p.price)),
+                                  trailing: IconButton(
+                                    icon: const Icon(Icons.add_circle,
+                                        color: red, size: 32),
+                                    onPressed: () => add(p),
+                                  ),
+                                ),
+                              ))
+                          .toList(),
+                    ),
+                  ),
+                  if (cart.isNotEmpty)
+                    Container(
+                      padding: const EdgeInsets.all(15),
+                      decoration: const BoxDecoration(
+                        color: Colors.white,
+                        boxShadow: [
+                          BoxShadow(
+                              blurRadius: 8, color: Colors.black12)
+                        ],
+                      ),
+                      child: Column(
+                        children: [
+                          ...cart.entries.map((e) => Row(
+                                mainAxisAlignment:
+                                    MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Text('${e.key} x${e.value}'),
+                                  Text(rp(products
+                                          .firstWhere(
+                                              (p) => p.name == e.key)
+                                          .price *
+                                      e.value)),
+                                ],
+                              )),
+                          const Divider(),
+                          Row(
+                            mainAxisAlignment:
+                                MainAxisAlignment.spaceBetween,
+                            children: [
+                              const Text('TOTAL',
+                                  style: TextStyle(
+                                      fontWeight: FontWeight.bold)),
+                              Text(rp(total),
+                                  style: const TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 20)),
+                            ],
+                          ),
+                          const SizedBox(height: 10),
+                          SizedBox(
+                            width: double.infinity,
+                            child: ElevatedButton(
+                              onPressed: checkout,
+                              style: ElevatedButton.styleFrom(
+                                  backgroundColor: red,
+                                  foregroundColor: Colors.white),
+                              child: const Text('BAYAR'),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                ],
+              );
+            }
+          }
+
+          class ReportPage extends StatelessWidget {
+            ReportPage({super.key});
+
+            @override
+            Widget build(BuildContext context) {
+              return FutureBuilder<List<Sale>>(
+                future: loadSales(),
+                builder: (context, snap) {
+                  final sales = snap.data ?? [];
+                  final omzet =
+                      sales.fold<int>(0, (s, e) => s + e.total);
+
+                  return ListView(
+                    padding: const EdgeInsets.all(16),
+                    children: [
+                      const Text('Laporan Penjualan',
+                          style: TextStyle(
+                              fontSize: 25, fontWeight: FontWeight.bold)),
+                      const SizedBox(height: 15),
+                      Card(
+                        child: ListTile(
+                          title: const Text('Total Omzet'),
+                          subtitle: Text('${sales.length} transaksi'),
+                          trailing: Text(rp(omzet),
+                              style: const TextStyle(
+                                  fontWeight: FontWeight.bold)),
+                        ),
+                      ),
+                      const SizedBox(height: 15),
+                      ...sales.map((s) => Card(
+                            child: ListTile(
+                              title: Text(s.no),
+                              subtitle: Text('${s.time} • ${s.payment}'),
+                              trailing: Text(rp(s.total)),
+                            ),
+                          )),
+                    ],
+                  );
+                },
+              );
+            }
+          }
+
+          class SettingsPage extends StatelessWidget {
+            final String role;
+            const SettingsPage({super.key, required this.role});
+
+            @override
+            Widget build(BuildContext context) {
+              return ListView(
+                padding: const EdgeInsets.all(16),
+                children: [
+                  const Text('Pengaturan',
+                      style: TextStyle(
+                          fontSize: 25, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 15),
+                  Card(
+                    child: ListTile(
+                      leading: const Icon(Icons.restaurant, color: red),
+                      title: const Text('Menu & Harga'),
+                      subtitle: const Text('Tambah, ubah, hapus menu'),
+                      onTap: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                            builder: (_) => const MenuPage()),
+                      ),
+                    ),
+                  ),
+                  Card(
+                    child: ListTile(
+                      leading: const Icon(Icons.store, color: red),
+                      title: const Text('Identitas Toko'),
+                      subtitle: const Text('Nama, alamat dan kontak'),
+                      onTap: () => showDialog(
+                        context: context,
+                        builder: (_) => const AlertDialog(
+                          title: Text('Identitas Toko'),
+                          content: Text(
+                              'Colonel Fried Chicken\nPengaturan identitas toko dapat dikembangkan pada versi berikutnya.'),
+                        ),
+                      ),
+                    ),
+                  ),
+                  Card(
+                    child: ListTile(
+                      leading: const Icon(Icons.person, color: red),
+                      title: const Text('Akun'),
+                      subtitle: Text('Login sebagai $role'),
+                    ),
+                  ),
+                  Card(
+                    child: ListTile(
+                      leading: const Icon(Icons.info, color: red),
+                      title: const Text('Tentang'),
+                      subtitle: const Text('Colonel Fried Chicken POS V4.0'),
+                    ),
+                  ),
+                ],
+              );
+            }
+          }
+
+          class MenuPage extends StatefulWidget {
+            const MenuPage({super.key});
+            @override
+            State<MenuPage> createState() => _MenuPageState();
+          }
+
+          class _MenuPageState extends State<MenuPage> {
+            List<Product> products = [];
+
+            @override
+            void initState() {
+              super.initState();
+              loadProducts().then((v) => setState(() => products = v));
+            }
+
+            void edit([Product? old]) {
+              final name = TextEditingController(text: old?.name ?? '');
+              final price = TextEditingController(
+                  text: old?.price.toString() ?? '');
+              String category = old?.category ?? 'Ayam';
+
+              showDialog(
+                context: context,
+                builder: (_) => AlertDialog(
+                  title: Text(old == null ? 'Tambah Menu' : 'Edit Menu'),
+                  content: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      TextField(
+                        controller: name,
+                        decoration:
+                            const InputDecoration(labelText: 'Nama menu'),
+                      ),
+                      TextField(
+                        controller: price,
+                        keyboardType: TextInputType.number,
+                        decoration:
+                            const InputDecoration(labelText: 'Harga'),
+                      ),
+                      DropdownButtonFormField<String>(
+                        value: category,
+                        items: const [
+                          DropdownMenuItem(
+                              value: 'Ayam', child: Text('Ayam')),
+                          DropdownMenuItem(
+                              value: 'Paket', child: Text('Paket')),
+                          DropdownMenuItem(
+                              value: 'Tambahan', child: Text('Tambahan')),
+                          DropdownMenuItem(
+                              value: 'Minuman', child: Text('Minuman')),
+                        ],
+                        onChanged: (v) => category = v!,
+                      ),
+                    ],
+                  ),
+                  actions: [
+                    TextButton(
+                        onPressed: () => Navigator.pop(context),
+                        child: const Text('Batal')),
+                    ElevatedButton(
+                      onPressed: () async {
+                        if (name.text.trim().isEmpty ||
+                            int.tryParse(price.text) == null) return;
+
+                        setState(() {
+                          if (old == null) {
+                            products.add(Product(
+                              name.text.trim(),
+                              category,
+                              int.parse(price.text),
+                            ));
+                          } else {
+                            old.name = name.text.trim();
+                            old.category = category;
+                            old.price = int.parse(price.text);
+                          }
+                        });
+
+                        await saveProducts(products);
+                        if (context.mounted) Navigator.pop(context);
+                      },
+                      child: const Text('Simpan'),
+                    ),
+                  ],
                 ),
               );
             }
@@ -491,117 +805,63 @@ jobs:
             @override
             Widget build(BuildContext context) {
               return Scaffold(
-                body: Container(
-                  decoration: const BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      colors: [
-                        brandRed,
-                        darkRed,
-                      ],
-                    ),
-                  ),
-                  child: Center(
-                    child: SingleChildScrollView(
-                      padding: const EdgeInsets.all(24),
-                      child: Card(
-                        elevation: 12,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(24),
-                        ),
-                        child: Padding(
-                          padding: const EdgeInsets.all(26),
-                          child: Column(
-                            children: [
-                              Container(
-                                width: 95,
-                                height: 95,
-                                decoration: const BoxDecoration(
-                                  color: brandRed,
-                                  shape: BoxShape.circle,
-                                ),
-                                child: const Center(
-                                  child: Text(
-                                    '🍗',
-                                    style: TextStyle(
-                                      fontSize: 50,
-                                    ),
-                                  ),
-                                ),
+                appBar: AppBar(
+                  title: const Text('Menu & Harga'),
+                  backgroundColor: red,
+                  foregroundColor: Colors.white,
+                ),
+                floatingActionButton: FloatingActionButton(
+                  backgroundColor: red,
+                  foregroundColor: Colors.white,
+                  onPressed: () => edit(),
+                  child: const Icon(Icons.add),
+                ),
+                body: ListView(
+                  padding: const EdgeInsets.all(12),
+                  children: products
+                      .map((p) => Card(
+                            child: ListTile(
+                              title: Text(p.name),
+                              subtitle: Text(
+                                  '${p.category} • ${rp(p.price)}'),
+                              leading: Switch(
+                                value: p.active,
+                                onChanged: (v) async {
+                                  setState(() => p.active = v);
+                                  await saveProducts(products);
+                                },
                               ),
-                              const SizedBox(height: 18),
-                              const Text(
-                                'COLONEL',
-                                style: TextStyle(
-                                  fontSize: 30,
-                                  fontWeight: FontWeight.w900,
-                                  color: brandRed,
-                                ),
+                              trailing: IconButton(
+                                icon: const Icon(Icons.edit),
+                                onPressed: () => edit(p),
                               ),
-                              const Text(
-                                'FRIED CHICKEN',
-                                style: TextStyle(
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.bold,
-                                  letterSpacing: 2,
-                                ),
-                              ),
-                              const SizedBox(height: 5),
-                              const Text(
-                                'POINT OF SALE',
-                                style: TextStyle(
-                                  color: Colors.grey,
-                                  letterSpacing: 1.5,
-                                ),
-                              ),
-                              const SizedBox(height: 28),
-                              TextField(
-                                controller: user,
-                                decoration: const InputDecoration(
-                                  labelText: 'Username',
-                                  prefixIcon: Icon(
-                                    Icons.person_outline,
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(height: 14),
-                              TextField(
-                                controller: pass,
-                                obscureText: obscure,
-                                decoration: InputDecoration(
-                                  labelText: 'Password',
-                                  prefixIcon: const Icon(
-                                    Icons.lock_outline,
-                                  ),
-                                  suffixIcon: IconButton(
-                                    onPressed: () {
-                                      setState(
-                                        () => obscure = !obscure,
-                                      );
-                                    },
-                                    icon: Icon(
-                                      obscure
-                                          ? Icons.visibility
-                                          : Icons.visibility_off,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(height: 20),
-                              SizedBox(
-                                width: double.infinity,
-                                child: ElevatedButton(
-                                  onPressed: loading ? null : login,
-                                  child: Text(
-                                    loading ? 'MEMPROSES...' : 'MASUK',
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(height: 16),
-                              const
+                            ),
+                          ))
+                      .toList(),
+                ),
+              );
+            }
+          }
+          DART
+
+      - name: Install dependencies
+        run: |
+          cd app
+          flutter pub get
+
+      - name: Analyze
+        run: |
+          cd app
+          dart analyze lib/main.dart
+
+      - name: Build APK
+        run: |
+          cd app
+          flutter build apk --release
+
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: colonel-pos-v4-apk
           path: app/build/app/outputs/flutter-apk/app-release.apk
+          if-no-files-found: error
